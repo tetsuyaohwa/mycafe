@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI株式ダッシュボード</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f4f1;
+    --surface-1: #fcfcfb;
+    --border: #e4e2dc;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7d7c77;
+    --accent: #2a78d6;
+    --series-1: #2a78d6;  /* 終値 */
+    --series-2: #eb6834;  /* 25日線 */
+    --series-3: #1baf7a;  /* 75日線 */
+    --up: #c62f2f;        /* 日本式: 上昇=赤 */
+    --down: #1c5cab;      /* 下落=青 */
+    --chip: #f0efec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --surface-1: #1a1a19;
+      --border: #2e2e2b;
+      --grid: #262624;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --accent: #3987e5;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --up: #ef6b6b;
+      --down: #6da7ec;
+      --chip: #383835;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --accent: #3987e5; --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --up: #ef6b6b; --down: #6da7ec; --chip: #383835;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text-primary);
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .02em; }
+  .meta { color: var(--text-muted); font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--chip);
+           color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+
+  /* 銘柄リスト */
+  .list { display: flex; flex-direction: column; padding: 6px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 10px 12px;
+         border-radius: 8px; cursor: pointer; border: 0; background: none; text-align: left;
+         font: inherit; color: inherit; width: 100%; }
+  .row:hover { background: var(--chip); }
+  .row[aria-selected="true"] { background: var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
+  .row .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .code { color: var(--text-muted); font-size: 12px; }
+  .row .price { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .row .chg { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .row .stance { grid-column: 1 / -1; }
+  .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--text-muted); }
+
+  /* 詳細 */
+  .detail { padding: 20px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .title-row h2 { margin: 0; font-size: 20px; }
+  .hero { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+  .tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .tile .k { color: var(--text-muted); font-size: 12px; }
+  .tile .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .s { color: var(--text-muted); font-size: 11px; }
+
+  .chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+  .seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; }
+  .seg button { border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 12px;
+                padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface-1); color: var(--text-primary); font-weight: 600;
+                                     box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 300px; overflow: visible; }
+  .chart text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+         border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+         white-space: nowrap; display: none; z-index: 2; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+  .ai { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .ai h3 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ai p { margin: 0 0 12px; }
+  .ai-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .ai-cols h4 { margin: 0 0 4px; font-size: 12px; color: var(--text-secondary); }
+  .ai-cols ul { margin: 0; padding-left: 18px; }
+  .empty { color: var(--text-muted); }
+  .disclaimer { color: var(--text-muted); font-size: 11px; margin-top: 24px; }
+  details summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  .table-scroll { max-height: 240px; overflow: auto; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI株式ダッシュボード</h1>
+    <span class="meta" id="meta"></span>
+  </header>
+  <div class="layout">
+    <nav class="card list" id="list" role="listbox" aria-label="ウォッチリスト"></nav>
+    <main class="card detail" id="detail"></main>
+  </div>
+  <p class="disclaimer">※ 本ダッシュボードは情報整理を目的としたもので、投資勧誘や売買の推奨ではありません。AIのコメントは誤りを含む可能性があります。投資判断はご自身の責任で行ってください。</p>
+</div>
+
+<script src="data/dashboard.js"></script>
+<script>
+const fmt = (v, d = 0) => v == null ? "—" : v.toLocaleString("ja-JP", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = v => v == null ? "—" : `${v > 0 ? "▲" : v < 0 ? "▼" : "±"}${Math.abs(v).toFixed(2)}%`;
+const dir = v => v == null || Math.abs(v) < 0.005 ? "flat" : v > 0 ? "up" : "down";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const RANGES = { "1M": 21, "3M": 63, "6M": 126, "1Y": Infinity };
+
+let data = window.DASHBOARD;
+let current = 0, range = "6M";
+
+function movingAvg(closes, n) {
+  return closes.map((_, i) => i + 1 < n ? null : closes.slice(i + 1 - n, i + 1).reduce((a, b) => a + b, 0) / n);
+}
+
+function renderList() {
+  const el = document.getElementById("list");
+  el.innerHTML = data.stocks.map((s, i) => `
+    <button class="row" role="option" aria-selected="${i === current}" data-i="${i}">
+      <span class="name">${esc(s.name)}</span>
+      <span class="price">${fmt(s.metrics.price, 1)}</span>
+      <span class="code">${esc(s.code)}</span>
+      <span class="chg ${dir(s.metrics.change_1d)}">${pct(s.metrics.change_1d)}</span>
+      ${s.ai ? `<span class="stance"><span class="badge">AI: ${esc(s.ai.stance)}</span></span>` : ""}
+    </button>`).join("");
+  el.querySelectorAll(".row").forEach(b => b.onclick = () => { current = +b.dataset.i; render(); });
+}
+
+function tile(k, v, cls = "", sub = "") {
+  return `<div class="tile"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
+}
+
+function renderDetail() {
+  const s = data.stocks[current], m = s.metrics;
+  const rsiNote = m.rsi14 == null ? "" : m.rsi14 >= 70 ? "買われ過ぎ圏" : m.rsi14 <= 30 ? "売られ過ぎ圏" : "中立圏";
+  const fromHigh = (m.price / m.high_52w - 1) * 100;
+  document.getElementById("detail").innerHTML = `
+    <div>
+      <div class="title-row">
+        <h2>${esc(s.name)}</h2><span class="meta">${esc(s.code)}.T</span>
+        ${m.trend ? `<span class="badge">中期トレンド: ${m.trend}</span>` : ""}
+      </div>
+      <div class="title-row">
+        <span class="hero">¥${fmt(m.price, 1)}</span>
+        <span class="${dir(m.change_1d)}">${pct(m.change_1d)} 前日比</span>
+      </div>
+    </div>
+    <div class="tiles">
+      ${tile("1か月", pct(m.change_1m), dir(m.change_1m))}
+      ${tile("3か月", pct(m.change_3m), dir(m.change_3m))}
+      ${tile("1年", pct(m.change_1y), dir(m.change_1y))}
+      ${tile("RSI(14)", fmt(m.rsi14, 1), "", rsiNote)}
+      ${tile("ボラティリティ", m.volatility == null ? "—" : fmt(m.volatility, 1) + "%", "", "20日・年率")}
+      ${tile("52週高値から", pct(fromHigh), dir(fromHigh), `高${fmt(m.high_52w, 0)}・安${fmt(m.low_52w, 0)}`)}
+    </div>
+    <section>
+      <div class="chart-head">
+        <div class="legend">
+          <span><i style="background:var(--series-1)"></i>終値</span>
+          <span><i style="background:var(--series-2)"></i>25日移動平均</span>
+          <span><i style="background:var(--series-3)"></i>75日移動平均</span>
+        </div>
+        <div class="seg" role="group" aria-label="期間">
+          ${Object.keys(RANGES).map(r => `<button data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join("")}
+        </div>
+      </div>
+      <div class="chart" id="chart"></div>
+      <details><summary>表で見る</summary><div class="table-scroll" id="table"></div></details>
+    </section>
+    ${renderAI(s)}`;
+  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => { range = b.dataset.r; renderDetail(); });
+  renderChart(s);
+}
+
+function renderAI(s) {
+  if (!s.ai) {
+    return `<div class="ai"><h3>AI分析</h3><p class="empty">AIコメントはありません。<code>python analyze.py</code>（APIキー設定済み）で生成できます。</p></div>`;
+  }
+  const list = (t, items) => `<div><h4>${t}</h4><ul>${items.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+  return `<div class="ai">
+    <h3>AI分析 <span class="badge">${esc(s.ai.stance)}</span>${data.demo ? `<span class="badge">サンプル</span>` : ""}</h3>
+    <p>${esc(s.ai.summary)}</p>
+    <div class="ai-cols">
+      ${list("プラス材料", s.ai.positives)}
+      ${list("リスク", s.ai.risks)}
+      ${list("注目ポイント", s.ai.watch_points)}
+    </div>
+    ${s.headlines?.length ? `<details style="margin-top:12px"><summary>参照したニュース見出し</summary><ul>${s.headlines.map(h => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
+  </div>`;
+}
+
+function renderChart(s) {
+  const all = s.history, closes = all.map(r => r.close);
+  const ma25 = movingAvg(closes, 25), ma75 = movingAvg(closes, 75);
+  const start = Math.max(0, all.length - RANGES[range]);
+  const pts = all.slice(start).map((r, i) => ({ date: r.date, close: r.close, ma25: ma25[start + i], ma75: ma75[start + i] }));
+  const series = [["close", "終値", "var(--series-1)"], ["ma25", "25日線", "var(--series-2)"], ["ma75", "75日線", "var(--series-3)"]];
+
+  const host = document.getElementById("chart");
+  const W = host.clientWidth || 700, H = 300, P = { t: 12, r: 56, b: 26, l: 8 };
+  const vals = pts.flatMap(p => [p.close, p.ma25, p.ma75]).filter(v => v != null);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+  const x = i => P.l + (i / Math.max(1, pts.length - 1)) * (W - P.l - P.r);
+  const y = v => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+
+  const step = niceStep((hi - lo) / 5);
+  const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+  const grid = ticks.map(v => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/>
+    <text x="${W - P.r + 6}" y="${y(v) + 4}">${fmt(v)}</text>`).join("");
+  const xTicks = [0, Math.floor(pts.length / 2), pts.length - 1].map(i =>
+    `<text x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}">${pts[i].date.slice(5).replace("-", "/")}</text>`).join("");
+  const path = key => {
+    let d = "", pen = false;
+    pts.forEach((p, i) => { if (p[key] == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`; pen = true; });
+    return d;
+  };
+  const lines = series.slice().reverse().map(([k, , c]) =>
+    `<path d="${path(k)}" fill="none" stroke="${c}" stroke-width="${k === "close" ? 2 : 1.5}" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(s.name)}の株価推移">
+    ${grid}${xTicks}${lines}
+    <g id="hover" style="display:none">
+      <line id="hx" y1="${P.t}" y2="${H - P.b}" stroke="var(--text-muted)" stroke-dasharray="3 3"/>
+      ${series.map(([k, , c]) => `<circle id="hc-${k}" r="4.5" fill="${c}" stroke="var(--surface-1)" stroke-width="2"/>`).join("")}
+    </g>
+    <rect x="${P.l}" y="0" width="${W - P.l - P.r}" height="${H}" fill="transparent" id="hit"/>
+  </svg><div class="tip" id="tip"></div>`;
+
+  const hit = host.querySelector("#hit"), hover = host.querySelector("#hover"), tip = host.querySelector("#tip");
+  hit.onpointermove = e => {
+    const rect = host.querySelector("svg").getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (W / rect.width);
+    const i = Math.max(0, Math.min(pts.length - 1, Math.round((px - P.l) / (W - P.l - P.r) * (pts.length - 1))));
+    const p = pts[i];
+    hover.style.display = "";
+    host.querySelector("#hx").setAttribute("x1", x(i)); host.querySelector("#hx").setAttribute("x2", x(i));
+    series.forEach(([k]) => {
+      const c = host.querySelector(`#hc-${k}`);
+      if (p[k] == null) { c.style.display = "none"; return; }
+      c.style.display = ""; c.setAttribute("cx", x(i)); c.setAttribute("cy", y(p[k]));
+    });
+    tip.innerHTML = `<div class="meta">${p.date}</div>` + series.map(([k, label, c]) =>
+      p[k] == null ? "" : `<div><span class="sw" style="background:${c}"></span>${label} <b>${fmt(p[k], 1)}</b></div>`).join("");
+    tip.style.display = "block";
+    const tx = x(i) / W * rect.width;
+    tip.style.left = `${tx > rect.width / 2 ? tx - tip.offsetWidth - 12 : tx + 12}px`;
+    tip.style.top = "8px";
+  };
+  hit.onpointerleave = () => { hover.style.display = "none"; tip.style.display = "none"; };
+
+  document.getElementById("table").innerHTML = `<table><thead><tr><th>日付</th><th>終値</th><th>25日線</th><th>75日線</th></tr></thead><tbody>${
+    pts.slice().reverse().map(p => `<tr><td>${p.date}</td><td>${fmt(p.close, 1)}</td><td>${fmt(p.ma25, 1)}</td><td>${fmt(p.ma75, 1)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function niceStep(raw) {
+  const mag = 10 ** Math.floor(Math.log10(raw)), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function render() {
+  renderList(); renderDetail();
+}
+
+if (!data) {
+  document.getElementById("detail").innerHTML = `<p class="empty">データがありません。<code>python analyze.py --demo</code> を実行してください。</p>`;
+} else {
+  document.getElementById("meta").innerHTML = `更新: ${esc(data.generated_at.replace("T", " "))}
+    ${data.demo ? ` <span class="badge">デモデータ</span>` : ""}${data.model ? ` <span class="badge">AI: Claude</span>` : ""}`;
+  render();
+  let t; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => renderChart(data.stocks[current]), 150); });
+}
+</script>
+</body>
+</html>
